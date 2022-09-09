@@ -1,4 +1,4 @@
-import { Mesh, InstancedBufferGeometry, PlaneBufferGeometry, ShaderMaterial, Vector3, Color, InstancedBufferAttribute, Math as _Math, AddEquation, Matrix4, UniformsUtils, UniformsLib, DynamicDrawUsage } from "three";
+import { Mesh, InstancedBufferGeometry, PlaneBufferGeometry, ShaderMaterial, Vector3, Color, InstancedBufferAttribute, MathUtils, AddEquation, Matrix4, UniformsUtils, UniformsLib, DynamicDrawUsage } from "three";
 import * as EasingFunctions from "@mozillareality/easing-functions";
 export function lerp(start, end, value) {
     return (end - start) * value + start;
@@ -11,6 +11,17 @@ export function clamp(min, max, value) {
         value = max;
     }
     return value;
+}
+function flipV(geometry) {
+    // Three.js seems to assume texture flipY is true for all its built in geometry
+    // but we turn this off on our texture loader since createImageBitmap in Firefox
+    // does not support flipping. Then we flip the v of uv for flipY = false texture.
+    // @TODO: There is a similar function in Hubs client core. Should we reuse it?
+    const uv = geometry.getAttribute("uv");
+    for (let i = 0; i < uv.count; i++) {
+        uv.setY(i, 1.0 - uv.getY(i));
+    }
+    return geometry;
 }
 const vertexShader = `
   #include <common>
@@ -60,7 +71,10 @@ const fragmentShader = `
 `;
 export class ParticleEmitter extends Mesh {
     constructor(texture) {
-        const planeGeometry = new PlaneBufferGeometry(1, 1, 1, 1, texture && texture.flipY);
+        const planeGeometry = new PlaneBufferGeometry(1, 1, 1, 1);
+        if (texture && !texture.flipY) {
+            flipV(planeGeometry);
+        }
         const geometry = new InstancedBufferGeometry();
         geometry.index = planeGeometry.index;
         geometry.attributes = planeGeometry.attributes;
@@ -73,6 +87,9 @@ export class ParticleEmitter extends Mesh {
             fragmentShader,
             transparent: true,
             depthWrite: false,
+            // TODO: Resolve the root issue. fog property seems to have
+            // been removed from Three.js ShaderMaterial at some point.
+            // @ts-ignore
             fog: true,
             blendEquation: AddEquation
         });
@@ -109,7 +126,10 @@ export class ParticleEmitter extends Mesh {
     }
     updateParticles() {
         const texture = this.material.uniforms.map.value;
-        const planeGeometry = new PlaneBufferGeometry(1, 1, 1, 1, texture && texture.flipY);
+        const planeGeometry = new PlaneBufferGeometry(1, 1, 1, 1);
+        if (texture && !texture.flipY) {
+            flipV(planeGeometry);
+        }
         const tempGeo = new InstancedBufferGeometry();
         tempGeo.index = planeGeometry.index;
         tempGeo.attributes = planeGeometry.attributes;
@@ -205,7 +225,7 @@ export class ParticleEmitter extends Mesh {
             particlePosition[i * 4 + 1] += lerp(this.startVelocity.y, this.endVelocity.y, velFactor) * dt;
             particlePosition[i * 4 + 2] += lerp(this.startVelocity.z, this.endVelocity.z, velFactor) * dt;
             particlePosition[i * 4 + 3] = lerp(this.startSize + this.particleSizeRandomness[i], this.endSize + this.particleSizeRandomness[i], sizeFactor);
-            particleAngle[i] += this.angularVelocity * _Math.DEG2RAD * dt;
+            particleAngle[i] += this.angularVelocity * MathUtils.DEG2RAD * dt;
             if (colorFactor <= 0.5) {
                 const colorFactor1 = colorFactor / 0.5;
                 particleColor[i * 4] = lerp(this.startColor.r, this.middleColor.r, colorFactor1);

@@ -1,12 +1,29 @@
 "use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
 var __importStar = (this && this.__importStar) || function (mod) {
     if (mod && mod.__esModule) return mod;
     var result = {};
-    if (mod != null) for (var k in mod) if (Object.hasOwnProperty.call(mod, k)) result[k] = mod[k];
-    result["default"] = mod;
+    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
+    __setModuleDefault(result, mod);
     return result;
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.ParticleEmitter = exports.clamp = exports.lerp = void 0;
 const three_1 = require("three");
 const EasingFunctions = __importStar(require("@mozillareality/easing-functions"));
 function lerp(start, end, value) {
@@ -23,6 +40,17 @@ function clamp(min, max, value) {
     return value;
 }
 exports.clamp = clamp;
+function flipV(geometry) {
+    // Three.js seems to assume texture flipY is true for all its built in geometry
+    // but we turn this off on our texture loader since createImageBitmap in Firefox
+    // does not support flipping. Then we flip the v of uv for flipY = false texture.
+    // @TODO: There is a similar function in Hubs client core. Should we reuse it?
+    const uv = geometry.getAttribute("uv");
+    for (let i = 0; i < uv.count; i++) {
+        uv.setY(i, 1.0 - uv.getY(i));
+    }
+    return geometry;
+}
 const vertexShader = `
   #include <common>
 
@@ -71,7 +99,10 @@ const fragmentShader = `
 `;
 class ParticleEmitter extends three_1.Mesh {
     constructor(texture) {
-        const planeGeometry = new three_1.PlaneBufferGeometry(1, 1, 1, 1, texture && texture.flipY);
+        const planeGeometry = new three_1.PlaneBufferGeometry(1, 1, 1, 1);
+        if (texture && !texture.flipY) {
+            flipV(planeGeometry);
+        }
         const geometry = new three_1.InstancedBufferGeometry();
         geometry.index = planeGeometry.index;
         geometry.attributes = planeGeometry.attributes;
@@ -84,6 +115,9 @@ class ParticleEmitter extends three_1.Mesh {
             fragmentShader,
             transparent: true,
             depthWrite: false,
+            // TODO: Resolve the root issue. fog property seems to have
+            // been removed from Three.js ShaderMaterial at some point.
+            // @ts-ignore
             fog: true,
             blendEquation: three_1.AddEquation
         });
@@ -120,7 +154,10 @@ class ParticleEmitter extends three_1.Mesh {
     }
     updateParticles() {
         const texture = this.material.uniforms.map.value;
-        const planeGeometry = new three_1.PlaneBufferGeometry(1, 1, 1, 1, texture && texture.flipY);
+        const planeGeometry = new three_1.PlaneBufferGeometry(1, 1, 1, 1);
+        if (texture && !texture.flipY) {
+            flipV(planeGeometry);
+        }
         const tempGeo = new three_1.InstancedBufferGeometry();
         tempGeo.index = planeGeometry.index;
         tempGeo.attributes = planeGeometry.attributes;
@@ -197,6 +234,18 @@ class ParticleEmitter extends three_1.Mesh {
             }
             const normalizedAge = clamp(0, 1, this.ages[i] / this.lifetimes[i]);
             const _EasingFunctions = EasingFunctions;
+            if (!_EasingFunctions[this.velocityCurve]) {
+                console.warn(`Unknown velocity curve type ${this.velocityCurve} in particle emitter. Falling back to linear.`);
+                this.velocityCurve = "linear";
+            }
+            if (!_EasingFunctions[this.sizeCurve]) {
+                console.warn(`Unknown size curve type ${this.sizeCurve} in particle emitter. Falling back to linear.`);
+                this.sizeCurve = "linear";
+            }
+            if (!_EasingFunctions[this.colorCurve]) {
+                console.warn(`Unknown color curve type ${this.colorCurve} in particle emitter. Falling back to linear.`);
+                this.colorCurve = "linear";
+            }
             const velFactor = _EasingFunctions[this.velocityCurve](normalizedAge);
             const sizeFactor = _EasingFunctions[this.sizeCurve](normalizedAge);
             const colorFactor = _EasingFunctions[this.colorCurve](normalizedAge);
@@ -204,7 +253,7 @@ class ParticleEmitter extends three_1.Mesh {
             particlePosition[i * 4 + 1] += lerp(this.startVelocity.y, this.endVelocity.y, velFactor) * dt;
             particlePosition[i * 4 + 2] += lerp(this.startVelocity.z, this.endVelocity.z, velFactor) * dt;
             particlePosition[i * 4 + 3] = lerp(this.startSize + this.particleSizeRandomness[i], this.endSize + this.particleSizeRandomness[i], sizeFactor);
-            particleAngle[i] += this.angularVelocity * three_1.Math.DEG2RAD * dt;
+            particleAngle[i] += this.angularVelocity * three_1.MathUtils.DEG2RAD * dt;
             if (colorFactor <= 0.5) {
                 const colorFactor1 = colorFactor / 0.5;
                 particleColor[i * 4] = lerp(this.startColor.r, this.middleColor.r, colorFactor1);
