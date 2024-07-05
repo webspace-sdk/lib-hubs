@@ -6,15 +6,6 @@
     "packages/*"
   ],
   "devDependencies": {
-    "execa": "^2.0.3",
-    "fs-extra": "^8.1.0",
-    "lerna": "^3.15.0",
-    "prettier": "^1.18.2",
-    "rimraf": "^2.6.3",
-    "tslint": "^5.18.0",
-    "tslint-config-prettier": "^1.18.0",
-    "tslint-plugin-prettier": "^2.0.1",
-    "typescript": "^4.7.2"
   },
   "scripts": {
     "build": "yarn clean && node ./scripts/build.js esm && node ./scripts/build.js cjs",
